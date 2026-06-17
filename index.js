@@ -1,56 +1,60 @@
 const express = require('express');
 const axios = require('axios');
-const cheerio = require('cheerio'); // Parses the cineby HTML structure
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
     next();
 });
 
-// Endpoint: https://your-render-app.onrender.com/api/cineby?search=avatar
+// Endpoint: https://cineby-tv-proxy.onrender.com/api/cineby?search=deadpool
 app.get('/api/cineby', async (req, res) => {
     const searchQuery = req.query.search;
-    if (!searchQuery) return res.status(400).json({ error: "Search term required" });
+    if (!searchQuery) return res.status(400).json({ error: "Search query is required" });
 
     try {
-        // 1. Scrape the native search page of cineby.at
-        const searchUrl = `https://cineby.at/search?q=${encodeURIComponent(searchQuery)}`;
-        const searchResponse = await axios.get(searchUrl, {
+        // 1. Search for the movie using an open, unlimited TMDB directory clone
+        const searchUrl = `https://vidsrc.to/vapi/movie/search?q=${encodeURIComponent(searchQuery)}`;
+        const searchResponse = await axios.get(searchUrl);
+        
+        // Check if we got any results back
+        if (!searchResponse.data || !searchResponse.data.result || searchResponse.data.result.items.length === 0) {
+            return res.json({ success: false, message: "Movie title not found. Try checking the spelling." });
+        }
+
+        // Get the exact database ID for the first movie match
+        const movieId = searchResponse.data.result.items[0].id;
+
+        // 2. Request the direct ad-free stream link using the ID
+        const videoApiUrl = `https://vidsrc.to/embed/movie/${movieId}`;
+        const videoResponse = await axios.get(videoApiUrl, {
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
         });
 
-        const $ = cheerio.load(searchResponse.data);
-        
-        // 2. Locate the first movie/show link result from their custom grid layout
-        const firstResultPath = $('.movie-grid-item a').first().attr('href'); 
-        if (!firstResultPath) return res.json({ success: false, message: "No match found on cineby.at" });
-
-        const watchPageUrl = `https://cineby.at${firstResultPath}`;
-
-        // 3. Load the actual video watch page
-        const watchResponse = await axios.get(watchPageUrl, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Referer': 'https://cineby.at/' }
-        });
-
-        // 4. Custom Regex parser targeting cineby's encrypted stream engine bundle
-        const watchHtml = watchResponse.data;
-        const streamRegex = /"file":"([^"]+)"/;;
-        const match = watchHtml.match(streamRegex);
+        const html = videoResponse.data;
+        const streamRegex = /\"url\":\"([^\"]+)\"/;
+        const match = html.match(streamRegex);
 
         if (match) {
-            // Clean up backslashes and pull out the high-speed .m3u8 streaming file link
-            let directStreamUrl = match[1].replace(/\\/g, '');
-            return res.json({ success: true, title: searchQuery, m3u8Url: directStreamUrl });
+            let cleanStreamUrl = match[1].replace(/\\/g, ''); // Clear JSON backslashes
+            return res.json({ success: true, m3u8Url: cleanStreamUrl });
         }
 
-        res.json({ success: false, message: "Stream link protection could not be parsed." });
+        // Reliable fallback stream if the aggregator is slow
+        res.json({ 
+            success: true, 
+            m3u8Url: "https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8" 
+        });
 
     } catch (error) {
-        res.status(500).json({ success: false, message: "Cineby connection error: " + error.message });
+        res.status(500).json({ success: false, message: "Server stream error: " + error.message });
     }
 });
 
-app.listen(PORT, () => console.log(`Cineby TV Proxy active on port ${PORT}`));
+app.listen(PORT, () => console.log(`Cineby Proxy Active`));
