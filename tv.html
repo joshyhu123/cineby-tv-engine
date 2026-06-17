@@ -36,8 +36,8 @@
 
         input.focus(); // Automatically opens the TV's layout keyboard on start
 
-        // Boot Smart TV stream configurations
-        shaka.polyfills.installAll();
+        // FIXED: Changed from shaka.polyfills to shaka.polyfill
+        shaka.polyfill.installAll(); 
         if (shaka.Player.isBrowserSupported()) {
             playerModule = new shaka.Player(video);
             playerModule.configure({
@@ -50,15 +50,13 @@
 
         // TV Remote Navigation Map
         document.addEventListener('keydown', function(e) {
-            // Code 13 is the physical "OK / Enter" button on your Toshiba remote
             if (e.keyCode === 13 && document.activeElement === input && input.value !== "") {
                 connectToProxy(input.value);
             }
-            // Code 8 and 461 are the physical "Back / Return" buttons on your remote
             if (e.keyCode === 8 || e.keyCode === 461) {
                 if (video.style.display === 'block') {
                     e.preventDefault();
-                    playerModule.unload(); // Drops video cached memory completely
+                    playerModule.unload(); 
                     video.style.display = 'none';
                     ui.style.display = 'inline-block';
                     loader.style.display = 'none';
@@ -72,7 +70,6 @@
             input.style.display = 'none';
             loader.style.display = 'block';
 
-            // CONNECTED DIRECTLY TO YOUR LIVE RENDER APPLICATION URL
             const proxyEndpoint = `https://cineby-tv-proxy.onrender.com/api/cineby?search=${encodeURIComponent(term)}`;
 
             fetch(proxyEndpoint)
@@ -81,7 +78,6 @@
                     if (data.success) {
                         ui.style.display = 'none';
                         video.style.display = 'block';
-                        // Pushes pure ad-free video directly to Toshiba microchips
                         playerModule.load(data.m3u8Url).catch(err => systemReset("TV Media Engine rejected stream layout."));
                     } else {
                         systemReset(data.message);
