@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cineby Smart TV Client</title>
+    <style>
+        body, html { margin: 0; padding: 0; background: #0a0a0a; width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; color: white; }
+        .app-container { display: inline-block; margin-top: 15%; padding: 45px; background: #121212; border: 2px solid #222; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.7); }
+        h1 { font-size: 40px; color: #ff3e3e; margin: 0 0 10px 0; letter-spacing: 1px; }
+        p { color: #666; font-size: 18px; margin-bottom: 30px; }
+        input { padding: 18px; font-size: 24px; width: 450px; text-align: center; border: 2px solid #333; background: #000; color: white; border-radius: 8px; font-weight: bold; }
+        input:focus { border-color: #ff3e3e; outline: none; background: #0d0d0d; }
+        .loader { margin-top: 25px; color: #ff3e3e; font-weight: bold; font-size: 22px; display: none; }
+        video { width: 100%; height: 100%; display: none; position: absolute; top:0; left:0; background: #000; z-index: 99999; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.3.5/shaka-player.compiled.js"></script>
+</head>
+<body>
+
+    <div id="portalUi" class="app-container">
+        <h1>CINEBY TV PLAYER</h1>
+        <p>Use your remote keyboard to type a movie or series name</p>
+        <input type="text" id="searchBar" placeholder="e.g. Deadpool" tabindex="0" />
+        <div id="loadingText" class="loader">Bypassing Cineby Ads & Parsing Video Stream...</div>
+    </div>
+
+    <video id="toshibaHardwarePlayer" controls autoplay></video>
+
+    <script>
+        const video = document.getElementById('toshibaHardwarePlayer');
+        const ui = document.getElementById('portalUi');
+        const input = document.getElementById('searchBar');
+        const loader = document.getElementById('loadingText');
+        let playerModule = null;
+
+        input.focus(); // Automatically opens the TV's layout keyboard on start
+
+        // Boot Smart TV stream configurations
+        shaka.polyfills.installAll();
+        if (shaka.Player.isBrowserSupported()) {
+            playerModule = new shaka.Player(video);
+            playerModule.configure({
+                streaming: { 
+                    bufferBehind: 3,     // Clears seen data out of TV RAM immediately
+                    bufferingGoal: 8     // Restricts background buffering to 8 seconds to prevent TV crashes
+                }
+            });
+        }
+
+        // TV Remote Navigation Map
+        document.addEventListener('keydown', function(e) {
+            // Code 13 is the physical "OK / Enter" button on your Toshiba remote
+            if (e.keyCode === 13 && document.activeElement === input && input.value !== "") {
+                connectToProxy(input.value);
+            }
+            // Code 8 and 461 are the physical "Back / Return" buttons on your remote
+            if (e.keyCode === 8 || e.keyCode === 461) {
+                if (video.style.display === 'block') {
+                    e.preventDefault();
+                    playerModule.unload(); // Drops video cached memory completely
+                    video.style.display = 'none';
+                    ui.style.display = 'inline-block';
+                    loader.style.display = 'none';
+                    input.value = "";
+                    input.focus();
+                }
+            }
+        });
+
+        function connectToProxy(term) {
+            input.style.display = 'none';
+            loader.style.display = 'block';
+
+            // !!! IMPORTANT: CHANGE THIS URL TO YOUR OWN DEPLOYED RENDER APPLICATION LINK !!!
+            const proxyEndpoint = `https://cineby-tv-proxy.onrender.com/api/cineby?search=${encodeURIComponent(term)}`;
+
+            fetch(proxyEndpoint)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        ui.style.display = 'none';
+                        video.style.display = 'block';
+                        // Pushes pure ad-free video directly to Toshiba microchips
+                        playerModule.load(data.m3u8Url).catch(err => systemReset("TV Media Engine rejected stream layout."));
+                    } else {
+                        systemReset(data.message);
+                    }
+                }).catch(err => systemReset("Could not contact cloud server. Check Render status."));
+        }
+
+        function systemReset(alertMessage) {
+            alert(alertMessage);
+            input.style.display = 'block';
+            loader.style.display = 'none';
+            input.focus();
+        }
+    </script>
+</body>
+</html>
