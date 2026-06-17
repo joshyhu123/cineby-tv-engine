@@ -36,8 +36,8 @@
 
         input.focus(); // Automatically opens the TV's layout keyboard on start
 
-        // FIXED: Changed from shaka.polyfills to shaka.polyfill
-        shaka.polyfill.installAll(); 
+        // Boot Smart TV stream configurations
+        shaka.polyfill.installAll();
         if (shaka.Player.isBrowserSupported()) {
             playerModule = new shaka.Player(video);
             playerModule.configure({
@@ -50,13 +50,15 @@
 
         // TV Remote Navigation Map
         document.addEventListener('keydown', function(e) {
+            // Code 13 is the physical "OK / Enter" button on your remote
             if (e.keyCode === 13 && document.activeElement === input && input.value !== "") {
                 connectToProxy(input.value);
             }
+            // Code 8 and 461 are the physical "Back / Return" buttons on your remote
             if (e.keyCode === 8 || e.keyCode === 461) {
                 if (video.style.display === 'block') {
                     e.preventDefault();
-                    playerModule.unload(); 
+                    playerModule.unload(); // Drops video cached memory completely
                     video.style.display = 'none';
                     ui.style.display = 'inline-block';
                     loader.style.display = 'none';
@@ -72,17 +74,30 @@
 
             const proxyEndpoint = `https://cineby-tv-proxy.onrender.com/api/cineby?search=${encodeURIComponent(term)}`;
 
-            fetch(proxyEndpoint)
+            // Internal 60-second connection timeout countdown clock to let Render wake up safely
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000); 
+
+            fetch(proxyEndpoint, { signal: controller.signal })
                 .then(res => res.json())
                 .then(data => {
+                    clearTimeout(timeoutId); // Connection made successfully, stop clock
                     if (data.success) {
                         ui.style.display = 'none';
                         video.style.display = 'block';
+                        // Pushes pure ad-free video directly to Toshiba microchips
                         playerModule.load(data.m3u8Url).catch(err => systemReset("TV Media Engine rejected stream layout."));
                     } else {
                         systemReset(data.message);
                     }
-                }).catch(err => systemReset("Could not contact cloud server. Check Render status."));
+                }).catch(err => {
+                    clearTimeout(timeoutId);
+                    if (err.name === 'AbortError') {
+                        systemReset("Render server took too long to wake up. Please try again in 10 seconds.");
+                    } else {
+                        systemReset("Could not contact cloud server. Check Render status.");
+                    }
+                });
         }
 
         function systemReset(alertMessage) {
