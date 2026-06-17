@@ -72,7 +72,7 @@
             input.style.display = 'none';
             loader.style.display = 'block';
 
-            // !!! IMPORTANT: CHANGE THIS URL TO YOUR OWN DEPLOYED RENDER APPLICATION LINK !!!
+            // CONNECTED DIRECTLY TO YOUR LIVE RENDER APPLICATION URL
             const proxyEndpoint = `https://cineby-tv-proxy.onrender.com/api/cineby?search=${encodeURIComponent(term)}`;
 
             fetch(proxyEndpoint)
